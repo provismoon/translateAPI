@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Translation Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+    <style>
+        .report-name-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .report-name-container div {
+            width: 48%;
+        }
+
+        .editor-container {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .editor {
+            width: 48%;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Translation Demo</h1>
+    <div>
+        <label for="report-selector">Select Report:</label>
+        <select id="report-selector">
+            <option value="">Select Report</option>
+        </select>
+    </div>
+    
+    <div>
+        <label for="language-selector">Select Language:</label>
+        <select id="language-selector">
+            <option value="English">English</option>
+            <option value="Hindi">Hindi</option>
+            <option value="Arabic">Arabic</option>
+            <option value="Russian">Russian</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Spanish">Spanish</option>
+            <option value="French">French</option>
+            <option value="German">German</option>
+            <option value="alien">그 외의 언어 방지</option>
+        </select>
+        <button id="translate-btn">Translate</button>
+        <span id="time-elapsed">0.0 seconds</span>
+    </div>
+
+    <div class="report-name-container">
+        <div>
+            <h2>Report Name (Original)</h2>
+            <input type="text" id="report-name" />
+        </div>
+        <div>
+            <h2>Report Name (Translated)</h2>
+            <input type="text" id="report-name-translated" />
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <div class="editor">
+            <h2>Vulnerability Detail (Original)</h2>
+            <div id="editor-vulnerability"></div>
+        </div>
+        <div class="editor">
+            <h2>Vulnerability Detail (Translated)</h2>
+            <div id="editor-vulnerability-translated"></div>
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <div class="editor">
+            <h2>How to Patch (Original)</h2>
+            <div id="editor-patch"></div>
+        </div>
+        <div class="editor">
+            <h2>How to Patch (Translated)</h2>
+            <div id="editor-patch-translated"></div>
+        </div>
+    </div>
+
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+    <script>
+        const editorVulnerability = new toastui.Editor({
+            el: document.querySelector('#editor-vulnerability'),
+            height: '400px',
+            initialEditType: 'markdown',
+            initialValue: '',
+            previewStyle: 'vertical'
+        });
+
+        const editorVulnerabilityTranslated = new toastui.Editor({
+            el: document.querySelector('#editor-vulnerability-translated'),
+            height: '400px',
+            initialEditType: 'markdown',
+            initialValue: '',
+            previewStyle: 'vertical',
+            usageStatistics: false,
+        });
+
+        const editorPatch = new toastui.Editor({
+            el: document.querySelector('#editor-patch'),
+            height: '400px',
+            initialEditType: 'markdown',
+            initialValue: '',
+            previewStyle: 'vertical'
+        });
+
+        const editorPatchTranslated = new toastui.Editor({
+            el: document.querySelector('#editor-patch-translated'),
+            height: '400px',
+            initialEditType: 'markdown',
+            initialValue: '',
+            previewStyle: 'vertical',
+            usageStatistics: false,
+        });
+
+        fetch('/api/v1/report').then(res => res.json()).then(data => {
+            const selector = document.getElementById('report-selector');
+            data.forEach((report, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `Report ${index + 1}`;
+                selector.appendChild(option);
+            });
+        });
+
+        document.getElementById('report-selector').addEventListener('change', function () {
+            const index = this.value;
+            if (index) {
+                fetch(`/api/v1/report/${index}`).then(res => res.json()).then(report => {
+                    document.getElementById('report-name').value = report.reportName;
+                    editorVulnerability.setMarkdown(report.vulnerabilityDetail || '');
+                    editorPatch.setMarkdown(report.howToPatchDetail || '');
+                });
+            }
+        });
+
+        document.getElementById('translate-btn').addEventListener('click', function () {
+            const reportName = document.getElementById('report-name').value;
+            const vulnerabilityDetail = editorVulnerability.getMarkdown();
+            const howToPatchDetail = editorPatch.getMarkdown();
+            const targetLang = document.getElementById('language-selector').value;
+
+            const timeElapsedElement = document.getElementById('time-elapsed');
+            let startTime = performance.now();
+            let intervalId;
+
+            // Timer starts
+            intervalId = setInterval(() => {
+                const currentTime = performance.now();
+                const elapsedTime = ((currentTime - startTime) / 1000).toFixed(1);
+                timeElapsedElement.textContent = `${elapsedTime} seconds`;
+            }, 100);
+
+            // Fetch translation
+            fetch('/api/v1/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reportName,
+                    vulnerabilityDetail,
+                    howToPatchDetail,
+                    target_lang: targetLang
+                })
+            })
+            .then(res => res.json())
+            .then(translated => {
+                clearInterval(intervalId);
+
+                // Show elapsed time
+                const endTime = performance.now();
+                const elapsedTime = ((endTime - startTime) / 1000).toFixed(1);
+                timeElapsedElement.textContent = `${elapsedTime} seconds`;
+
+                // Display translation results
+                document.getElementById('report-name-translated').value = translated.reportName || '';
+                editorVulnerabilityTranslated.setMarkdown(translated.vulnerabilityDetail || '');
+                editorPatchTranslated.setMarkdown(translated.howToPatchDetail || '');
+            })
+            .catch(error => {
+                console.error("Translation error:", error);
+                clearInterval(intervalId);
+                timeElapsedElement.textContent = "Error occurred";
+            });
+        });
+    </script>
+</body>
+</html>
